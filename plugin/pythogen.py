@@ -89,3 +89,18 @@ def run(*args, **kwargs):
 def carbonate():
     # TODO load all python modules from bundle directory
     pass
+
+
+class ExCommand(object):
+    """ Base class for custom vim commands """
+    pass
+
+
+class Operator(object):
+    """ Base class for custom vim operator """
+    pass
+
+
+class Movement(object):
+    """ Base class for custom vim movement """
+    pass
