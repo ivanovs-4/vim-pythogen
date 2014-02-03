@@ -1,14 +1,22 @@
 # -*- coding: utf-8 -*-
 #!/usr/bin/env python
 
+from __future__ import absolute_import
+
 import functools
 import inspect
+import os
+import sys
 import textwrap
+
+from importlib import import_module
 
 import vim
 
 
 _storage = {}
+
+RUNTIME_PATH = vim.eval("&runtimepath").split(',')
 
 
 def eval_vim_args_with_python(fn, argnames, varargs):
@@ -87,8 +95,30 @@ def run(*args, **kwargs):
 
 
 def carbonate():
-    # TODO load all python modules from bundle directory
-    pass
+    """ Load all python modules from bundle directory """
+
+    for path in RUNTIME_PATH:
+        unused, plugin_name = os.path.split(path)
+
+        plugin_path = os.path.join(path, 'plugin')
+
+        if plugin_path not in sys.path:
+            sys.path.append(plugin_path)
+            path_was_appended = True
+
+        else:
+            path_was_appended = False
+
+        try:
+            plugin_module = import_module(plugin_name)
+            plugin_module.main()
+
+        except Exception:
+            pass
+
+        finally:
+            if path_was_appended:
+                sys.path.remove(plugin_path)
 
 
 class ExCommand(object):
