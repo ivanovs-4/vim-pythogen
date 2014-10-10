@@ -17,6 +17,7 @@ python << endpython
 import os
 import sys
 import vim
+
 for path in vim.eval("&runtimepath").split(','):
     unused, name = os.path.split(path)
 
@@ -28,7 +29,8 @@ for path in vim.eval("&runtimepath").split(','):
             try:
                 import pythogen
             except Exception:
-                pass
+                import traceback
+                print(traceback.format_exc())
             else:
                 pythogen.carbonate()
 
