@@ -9,6 +9,7 @@ import os
 import sys
 import textwrap
 import traceback
+import subprocess as sub
 
 from importlib import import_module
 
@@ -21,6 +22,8 @@ log = logging.getLogger(__name__)
 _storage = {}
 
 RUNTIME_PATH = vim.eval("&runtimepath").split(',')
+
+SETTINGS_PLACE = '.vimrcpy'
 
 
 def eval_vim_args_with_python(fn, argnames, varargs):
@@ -190,6 +193,29 @@ def get_plugin(name):
     return Gen.get_plugin(name)
 
 
+class Settings(object):
+    def __init__(self, name):
+        self.name = name
+        self._storage = {}
+
+        self.load()
+
+    @property
+    def file_name(self):
+        return os.path.join(os.environ['HOME'], SETTINGS_PLACE, self.name) + '.py'
+
+    def load(self):
+        if not os.path.exists(self.file_name):
+            sub.check_call(['mkdir', '-p', os.path.dirname(self.file_name)])
+            sub.check_call(['touch', self.file_name])
+
+    def option(self, name, *args, **kwargs):
+        self._storage[name] = kwargs.get('default')
+
+    def __getitem__(self, name):
+        return self._storage[name]
+
+
 class Gen(object):
     """ Main entry-point for individual plugin """
 
@@ -197,13 +223,27 @@ class Gen(object):
 
     def __init__(self, name):
         self.name = name
-        self.log = logging.getLogger(log.name + '.' + self.name)
 
         if self.name in self._plugins:
-            raise Exception('already existed plugin: %r', self.name)
+            raise Exception('Already existed plugin: %r', self.name)
 
         self._plugins[self.name] = self
         self._methods = {}
+
+        self.log = logging.getLogger(log.name + '.' + self.name)
+
+        self.settings.option('debug', default=False)
+
+        if self.settings['debug']:
+            self.log.addHandler(logging.StreamHandler())
+            self.log.setLevel(logging.DEBUG)
+
+    @property
+    def settings(self):
+        if not getattr(self, '_settings', False):
+            self._settings = Settings(self.name)
+
+        return self._settings
 
     @classmethod
     def get_plugin(cls, name):

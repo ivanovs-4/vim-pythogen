@@ -16,6 +16,8 @@ let g:loaded_pythogen = 1
 python << endpython
 import os
 import sys
+import traceback
+
 import vim
 
 for path in vim.eval("&runtimepath").split(','):
@@ -28,11 +30,9 @@ for path in vim.eval("&runtimepath").split(','):
             sys.path.append(plugin_path)
             try:
                 import pythogen
-            except Exception:
-                import traceback
-                print(traceback.format_exc())
-            else:
                 pythogen.carbonate()
+            except Exception:
+                print(traceback.format_exc())
 
             break
 endpython
