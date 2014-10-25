@@ -215,23 +215,37 @@ class Settings(object):
     def __getitem__(self, name):
         return self._storage[name]
 
+    def __setitem__(self, name, value):
+        self._storage[name] = value
+
+
+_plugins = {}
+
+
+def get_plugin(name):
+    return _plugins[name]
+
+
+def set_plugin(name, plugin):
+    if name in _plugins:
+        raise Exception('Already existed plugin: %r', name)
+
+    _plugins[name] = plugin
+
 
 class Gen(object):
     """ Main entry-point for individual plugin """
 
-    _plugins = {}
-
     def __init__(self, name):
         self.name = name
 
-        if self.name in self._plugins:
-            raise Exception('Already existed plugin: %r', self.name)
+        set_plugin(self.name, self)
 
-        self._plugins[self.name] = self
         self._methods = {}
 
         self.log = logging.getLogger(log.name + '.' + self.name)
 
+        # self.settings.option('debug', default=True)
         self.settings.option('debug', default=False)
 
         if self.settings['debug']:
@@ -247,7 +261,7 @@ class Gen(object):
 
     @classmethod
     def get_plugin(cls, name):
-        return cls._plugins[name]
+        return _plugins[name]
 
     def get_method(self, name):
         return self._methods[name]
