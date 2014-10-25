@@ -4,6 +4,7 @@ from __future__ import absolute_import, unicode_literals
 
 import functools
 import inspect
+import json
 import logging
 import os
 import sys
@@ -197,26 +198,62 @@ class Settings(object):
     def __init__(self, name):
         self.name = name
         self._storage = {}
+        self._options = {}
 
-        self.load()
+        self.force_load()
 
     @property
     def file_name(self):
-        return os.path.join(os.environ['HOME'], SETTINGS_PLACE, self.name) + '.py'
+        return os.path.join(os.environ['HOME'], SETTINGS_PLACE,
+                            self.name) + '.json'
+
+    def force_load(self):
+        try:
+            self.load()
+
+        except Exception:
+            if os.path.exists(self.file_name):
+                # If file exists and load failed, create backup before saving
+                # clean settings.
+                sub.check_call(['mv', self.file_name, self.file_name + '~'])
+
+            # Save clean
+            self.save()
+            self.load()
 
     def load(self):
-        if not os.path.exists(self.file_name):
-            sub.check_call(['mkdir', '-p', os.path.dirname(self.file_name)])
-            sub.check_call(['touch', self.file_name])
+        with open(self.file_name, 'rb') as f:
+            self._storage = json.load(f)
+
+    def save(self):
+        sub.check_call(['mkdir', '-p', os.path.dirname(self.file_name)])
+
+        with open(self.file_name, 'wb') as f:
+            json.dump(dict(self.items()), f,
+                      ensure_ascii=False, sort_keys=True, indent=4)
 
     def option(self, name, *args, **kwargs):
-        self._storage[name] = kwargs.get('default')
+        if 'default' not in kwargs:
+            kwargs['default'] = None
+
+        self._options[name] = kwargs
+
+        if name not in self._storage:
+            self.save()
+            self.load()
+
+    def items(self):
+        return {k: self[k] for k in self._options.keys()}
 
     def __getitem__(self, name):
-        return self._storage[name]
+        # Return stored value or default value for this option
+        return self._storage[name] if name in self._storage else \
+            self._options[name]['default']
 
     def __setitem__(self, name, value):
+        self.force_load()
         self._storage[name] = value
+        self.save()
 
 
 _plugins = {}
@@ -245,11 +282,13 @@ class Gen(object):
 
         self.log = logging.getLogger(log.name + '.' + self.name)
 
-        # self.settings.option('debug', default=True)
         self.settings.option('debug', default=False)
 
         if self.settings['debug']:
-            self.log.addHandler(logging.StreamHandler())
+            stream_handler = logging.StreamHandler()
+            fm = logging.Formatter('%(name)s %(levelname)s: %(message)s')
+            stream_handler.setFormatter(fm)
+            self.log.addHandler(stream_handler)
             self.log.setLevel(logging.DEBUG)
 
     @property
