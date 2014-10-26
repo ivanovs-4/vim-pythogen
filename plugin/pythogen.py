@@ -106,6 +106,14 @@ def run(*args, **kwargs):
     return decorator
 
 
+class PrintStream(object):
+    def write(self, val):
+        print(val)
+
+    def flush(self):
+        pass
+
+
 class StreamToList(object):
     def __init__(self, buf):
         self.buf = buf
@@ -278,7 +286,7 @@ class Gen(object):
         self.settings.option('debug', default=False)
 
         if self.settings['debug']:
-            stream_handler = logging.StreamHandler()
+            stream_handler = logging.StreamHandler(PrintStream())
             fm = logging.Formatter('%(name)s %(levelname)s: %(message)s')
             stream_handler.setFormatter(fm)
             self.log.addHandler(stream_handler)
