@@ -190,10 +190,6 @@ class Movement(object):
     pass
 
 
-def get_plugin(name):
-    return Gen.get_plugin(name)
-
-
 class Settings(object):
     def __init__(self, name):
         self.name = name
@@ -256,18 +252,15 @@ class Settings(object):
         self.save()
 
 
-_plugins = {}
+class Plugins(dict):
+    def register(self, name, plugin):
+        if name in self:
+            raise Exception('Already existed plugin: %r', name)
+
+        self[name] = plugin
 
 
-def get_plugin(name):
-    return _plugins[name]
-
-
-def set_plugin(name, plugin):
-    if name in _plugins:
-        raise Exception('Already existed plugin: %r', name)
-
-    _plugins[name] = plugin
+_plugins = Plugins()
 
 
 class Gen(object):
@@ -276,7 +269,7 @@ class Gen(object):
     def __init__(self, name):
         self.name = name
 
-        set_plugin(self.name, self)
+        _plugins.register(self.name, self)
 
         self._methods = {}
 
@@ -299,8 +292,8 @@ class Gen(object):
         return self._settings
 
     @classmethod
-    def get_plugin(cls, name):
-        return _plugins[name]
+    def get(cls, name):
+        return _plugins.get(name)
 
     def get_method(self, name):
         return self._methods[name]
@@ -322,8 +315,8 @@ class Gen(object):
         template = """
             function! %(vim_function)s(%(vim_args)s) %(range)s
             python << endpython
-            from pythogen import get_plugin
-            get_plugin('%(plugin_name)s').get_method('%(python_method)s')()
+            from pythogen import Gen
+            Gen.get('%(plugin_name)s').get_method('%(python_method)s')()
             endpython
             endfunction
         """
