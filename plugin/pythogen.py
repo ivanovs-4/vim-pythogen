@@ -90,7 +90,7 @@ def _make_vimfunction(fn, vim_function_name):
 
 
 def make_vimfunction(fn):
-    vim_function_name = fn.__name__.capitalize()
+    vim_function_name = fn.__name__.replace('-', '_').capitalize()
 
     _make_vimfunction(fn, vim_function_name)
 
@@ -295,7 +295,9 @@ class Gen(object):
         python-function
         """
 
-        name = '_'.join([self.name.capitalize(), fn.__name__])
+        name = '_'.join([self.name.capitalize(), fn.__name__]). \
+            replace('-', '_')
+
         self.make_vim_function(fn, name)
 
         return fn
