@@ -153,34 +153,17 @@ def carbonate():
             plugin_module = import_module(plugin_name)
 
         except Exception as e:
-            clog.info('Import module error: %r %r',
-                      plugin_name, e)
+            clog.info('Import module error: %r %r', plugin_name, e)
 
             if path_was_appended:
                 sys.path.remove(plugin_path)
 
             continue
 
-        if not hasattr(plugin_module, 'main'):
-            clog.info('No main method in module: %r %r %r',
-                      plugin_name, e, traceback.format_exc())
+        vim.command('let g:loaded_python_plugin_%s = 1' %
+                    plugin_name.replace('-', '_'))
 
-            if path_was_appended:
-                sys.path.remove(plugin_path)
-
-            continue
-
-        try:
-            plugin_module.main()
-            vim.command('let g:loaded_python_plugin_%s = 1' %
-                        plugin_name.replace('-', '_'))
-
-        except Exception as e:
-            clog.info('Module: %r. Error: %s',
-                      plugin_module, traceback.format_exc())
-
-        else:
-            clog.info('Loaded: %r', plugin_module)
+        clog.info('Loaded: %r', plugin_module)
 
 
 class ExCommand(object):
