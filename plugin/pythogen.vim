@@ -3,8 +3,8 @@
 " vi: ft=vim:tw=80:sw=4:ts=4:fdm=marker
 
 if ! has('python') || v:version < 703
-	echoerr "Unable to start orgmode. Orgmode depends on Vim >= 7.3 with Python support complied in."
-	finish
+    echoerr "Unable to start pythogen. Pythogen depends on Vim >= 7.3 with Python support complied in."
+    finish
 endif
 
 " load plugin just once

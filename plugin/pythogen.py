@@ -13,11 +13,9 @@ import traceback
 import subprocess as sub
 
 from importlib import import_module
+from logging.handlers import WatchedFileHandler
 
 import vim
-
-
-log = logging.getLogger(__name__)
 
 
 _storage = {}
@@ -50,36 +48,15 @@ def eval_vim_args_with_python(fn, argnames, varargs):
     vim.command('return "{}"'.format(fn(*args)))
 
 
-class PrintStream(object):
-    def write(self, val):
-        print(val)
-
-    def flush(self):
-        pass
-
-
-class StreamToList(object):
-    def __init__(self, buf):
-        self.buf = buf
-
-    def write(self, val):
-        self.buf.append(val)
-
-    def flush(self):
-        pass
-
-
-carbonate_log = []
-
-
 def carbonate():
     """ Load all python modules from bundle directory """
 
-    clog = logging.getLogger(log.name + '.carbonate')
-    clog.setLevel(logging.DEBUG)
-    handler = logging.StreamHandler(StreamToList(carbonate_log))
-    handler.terminator = ''
-    clog.addHandler(handler)
+    gin = Gen(__name__)
+
+    gin.settings.option('enabled', default=True)
+
+    if not gin.settings['enabled']:
+        return
 
     for path in RUNTIME_PATH:
         unused, plugin_name = os.path.split(path)
@@ -97,7 +74,7 @@ def carbonate():
             plugin_module = import_module(plugin_name)
 
         except Exception as e:
-            clog.info('Import module error: %r %r', plugin_name, e)
+            gin.log.info('Import module error: %r %r', plugin_name, e)
 
             if path_was_appended:
                 sys.path.remove(plugin_path)
@@ -107,7 +84,7 @@ def carbonate():
         vim.command('let g:loaded_python_plugin_%s = 1' %
                     plugin_name.replace('-', '_'))
 
-        clog.info('Loaded: %r', plugin_module)
+        gin.log.info('Loaded: %r', plugin_module)
 
 
 class TextObject(object):
@@ -181,6 +158,12 @@ class Settings(object):
     def items(self):
         return {k: self[k] for k in self._options.keys()}
 
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except Exception:
+            return super(Settings, self).__getattr__(name)
+
     def __getitem__(self, name):
         # Return stored value or default value for this option
         return self._storage[name] if name in self._storage else \
@@ -213,16 +196,22 @@ class Gen(object):
 
         self._methods = {}
 
-        self.log = logging.getLogger(log.name + '.' + self.name)
+        self.log = logging.getLogger(self.name)
+        # self.log.setLevel(logging.DEBUG)
 
-        self.settings.option('debug', default=False)
+        self.settings.option('LOG_PATH', default=None)
 
-        if self.settings['debug']:
-            stream_handler = logging.StreamHandler(PrintStream())
-            fm = logging.Formatter('%(name)s %(levelname)s: %(message)s')
-            stream_handler.setFormatter(fm)
-            self.log.addHandler(stream_handler)
-            self.log.setLevel(logging.DEBUG)
+        if self.settings.LOG_PATH:
+            if not os.path.exists(self.settings.LOG_PATH):
+                os.makedirs(self.settings.LOG_PATH)
+
+            log_file_name = '%s.log' % os.path.join(self.settings.LOG_PATH,
+                                                    self.name)
+
+            handler = WatchedFileHandler(log_file_name, 'w')
+            fm = logging.Formatter('%(levelname)s: %(message)s')
+            handler.setFormatter(fm)
+            self.log.addHandler(handler)
 
     @property
     def settings(self):
