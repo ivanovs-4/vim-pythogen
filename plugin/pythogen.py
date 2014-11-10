@@ -50,62 +50,6 @@ def eval_vim_args_with_python(fn, argnames, varargs):
     vim.command('return "{}"'.format(fn(*args)))
 
 
-def _make_vimfunction(fn, vim_function_name):
-    log.debug('make_vimfunction %s %r', vim_function_name, fn)
-
-    template = """
-        function! %(vim_function)s(%(vim_args)s) %(range)s
-        python << endpython
-        import pythogen
-        pythogen._storage['%(python_method)s']()
-        endpython
-        endfunction
-    """
-
-    spec = inspect.getargspec(fn)
-
-    vim_args = [a for a in spec.args if a not in ['vimrange']]
-
-    if spec.varargs:
-        vim_args.append('...')
-
-    declaration = textwrap.dedent(template) % {
-        'vim_function': vim_function_name,
-        'vim_args': ', '.join(vim_args),
-        'range': 'range' if 'vimrange' in spec.args else '',
-        'python_method': fn.__name__,
-    }
-
-    @functools.wraps(fn)
-    def wrapper():
-        eval_vim_args_with_python(
-            fn,
-            spec.args,
-            varargs=bool(spec.varargs)
-        )
-
-    _storage[fn.__name__] = wrapper
-
-    vim.command(declaration)
-
-
-def make_vimfunction(fn):
-    vim_function_name = fn.__name__.replace('-', '_').capitalize()
-
-    _make_vimfunction(fn, vim_function_name)
-
-    return fn
-
-
-def run(*args, **kwargs):
-    def decorator(fn):
-        fn(*args, **kwargs)
-
-        return fn
-
-    return decorator
-
-
 class PrintStream(object):
     def write(self, val):
         print(val)
@@ -164,6 +108,11 @@ def carbonate():
                     plugin_name.replace('-', '_'))
 
         clog.info('Loaded: %r', plugin_module)
+
+
+class TextObject(object):
+    """ Base class for custom vim textobject """
+    pass
 
 
 class ExCommand(object):
