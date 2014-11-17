@@ -212,16 +212,14 @@ class Gin(object):
     def get(cls, name):
         return _plugins.get(name)
 
+    def get_method(self, fn):
+        return self._methods[GinMethod.fn_method_name(fn)]
+
     def get_or_create_method(self, fn):
-        name = fn.__name__ if callable(fn) else fn
+        name = GinMethod.fn_method_name(fn)
 
         if name not in self._methods:
             self._methods[name] = GinMethod(self, fn)
-
-        return self._methods[name]
-
-    def get_method(self, fn):
-        name = fn.__name__ if callable(fn) else fn
 
         return self._methods[name]
 
@@ -240,7 +238,7 @@ class Gin(object):
 
         return fn
 
-    def vim_command(self, command_name):
+    def vim_command(self, command_name, *args, **kwargs):
         """
         Decorator to create vim-command
         that call python-function via vim-function.
@@ -248,7 +246,8 @@ class Gin(object):
 
         def deco(fn):
             try:
-                self.get_or_create_method(fn).make_vim_command(command_name)
+                self.get_or_create_method(fn). \
+                    make_vim_command(command_name, *args, **kwargs)
 
             except Exception:
                 self.log.exception('Decorator vim_command')
@@ -259,19 +258,25 @@ class Gin(object):
 
 
 class GinMethod(object):
-    vim_fn_name = None
-
     def __init__(self, gin, fn):
         self.gin = gin
         self.fn = fn
         self.spec = inspect.getargspec(fn)
 
     @staticmethod
-    def eval_vim_args_with_python(fn, argnames, varargs, range_argname):
+    def fn_method_name(fn):
+        return fn if isinstance(fn, basestring) else repr(fn)
+
+    @property
+    def method_name(self):
+        return self.fn_method_name(self.fn)
+
+    @staticmethod
+    def eval_vim_fn_args(fn, vim_fn_argnames, varargs, range_argname):
         def vim_eval_a(name):
             return vim.eval('a:%s' % name)
 
-        args = [vim_eval_a(name) for name in argnames]
+        args = [vim_eval_a(name) for name in vim_fn_argnames]
 
         if varargs:
             argn = int(vim.eval('a:0'))
@@ -290,10 +295,60 @@ class GinMethod(object):
         vim.command('return "{}"'.format(fn(*args, **kwargs)))
 
     def make_vim_command(self, command_name):
-        pass
+        '''
+        attrs:
+        -range      range allowed, default is current line
+
+        -nargs=0    No arguments are allowed (the default)
+        -nargs=1    Exactly one argument is require, it includes spaces
+        -nargs=*    Any number of arguments are allowed (0, 1, or many),
+                    separated by white space
+        -nargs=?    0 or 1 arguments are allowed
+        -nargs=+    Arguments must be supplied, but any number are allowed
+        '''
+
+        spec = self.spec
+        len_defaults = len(spec.defaults or [])
+        len_args = len(spec.args) - len_defaults
+
+        if not len_args and not len_defaults and not spec.varargs:
+            nargs = '0'
+
+        elif len_args == 1 and not len_defaults and not spec.varargs:
+            nargs = '1'
+
+        elif not len_args and len_defaults == 1 and not spec.varargs:
+            nargs = '?'
+
+        elif len_args:
+            nargs = '+'
+
+        else:
+            nargs = '*'
+
+        attrs = '-nargs=%s' % nargs
+        fargs = '<f-args>'
+
+        declaration = 'command! %s %s call %s(%s)' % (
+            attrs, command_name, self.vim_fn_name, fargs)
+
+        self.gin.log.debug('Make vim command: %s', declaration)
+
+        vim.command(declaration)
+
+    @property
+    def vim_fn_name(self):
+        self.make_vim_function()
+
+        return self._vim_fn_name
+
+    _vim_fn_name = None
 
     def make_vim_function(self):
-        self.vim_fn_name = '_'.join([
+        if self._vim_fn_name:
+            return
+
+        self._vim_fn_name = '_'.join([
             self.gin.name.capitalize(),
             self.fn.__name__
         ]).replace('-', '_')
@@ -305,14 +360,17 @@ class GinMethod(object):
         if spec.defaults:
             argnames = argnames[:-len(spec.defaults)]
 
-        if spec.defaults or spec.varargs:
+        self.vim_fn_argnames = argnames[:]
+        self.vim_fn_has_varargs = bool(spec.defaults or spec.varargs)
+
+        if self.vim_fn_has_varargs:
             argnames.append('...')
 
         def wrapper():
-            return self.eval_vim_args_with_python(
+            return self.eval_vim_fn_args(
                 self.fn,
-                argnames,
-                varargs=bool(spec.defaults or spec.varargs),
+                self.vim_fn_argnames,
+                varargs=self.vim_fn_has_varargs,
                 range_argname='vimrange' if 'vimrange' in spec.args else None
             )
 
@@ -330,11 +388,11 @@ class GinMethod(object):
         """
 
         declaration = textwrap.dedent(template) % {
-            'vim_function': self.vim_fn_name,
+            'vim_function': self._vim_fn_name,
             'argnames': ', '.join(argnames),
             'range': 'range' if 'vimrange' in spec.args else '',
             'plugin_name': self.gin.name,
-            'method_name': self.fn.__name__,
+            'method_name': self.method_name,
         }
 
         self.gin.log.debug('Make vim fn: %s',
