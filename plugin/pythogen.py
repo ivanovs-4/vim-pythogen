@@ -25,29 +25,6 @@ RUNTIME_PATH = vim.eval("&runtimepath").split(',')
 SETTINGS_PLACE = '.vimrcpy'
 
 
-def eval_vim_args_with_python(fn, argnames, varargs, range_argname):
-    def vim_eval_a(name):
-        return vim.eval('a:%s' % name)
-
-    args = [vim_eval_a(name) for name in argnames]
-
-    if varargs:
-        argn = int(vim.eval('a:0'))
-
-        for j in xrange(1, argn + 1):
-            args.append(vim.eval('a:%s' % j))
-
-    kwargs = {}
-
-    if range_argname:
-        kwargs[range_argname] = (
-            vim.eval('a:firstline'),
-            vim.eval('a:lastline')
-        )
-
-    vim.command('return "{}"'.format(fn(*args, **kwargs)))
-
-
 def carbonate():
     """ Load all python modules from bundle directory """
 
@@ -204,6 +181,7 @@ class Gin(object):
         self._methods = {}
 
         self.log = logging.getLogger(self.name)
+        self.log.setLevel(logging.INFO)
 
         self.settings.option('LOG_PATH', default=None)
 
@@ -215,9 +193,13 @@ class Gin(object):
                                                     self.name)
 
             handler = WatchedFileHandler(log_file_name, 'w')
-            fm = logging.Formatter('%(levelname)s: %(message)s')
-            handler.setFormatter(fm)
-            self.log.addHandler(handler)
+
+        else:
+            handler = logging.FileHandler('/dev/null')
+
+        fm = logging.Formatter('%(levelname)s: %(message)s')
+        handler.setFormatter(fm)
+        self.log.addHandler(handler)
 
     @property
     def settings(self):
@@ -230,36 +212,93 @@ class Gin(object):
     def get(cls, name):
         return _plugins.get(name)
 
-    def get_method(self, name):
+    def get_or_create_method(self, fn):
+        name = fn.__name__ if callable(fn) else fn
+
+        if name not in self._methods:
+            self._methods[name] = GinMethod(self, fn)
+
+        return self._methods[name]
+
+    def get_method(self, fn):
+        name = fn.__name__ if callable(fn) else fn
+
         return self._methods[name]
 
     def vim_func(self, fn):
         """
-        Decorator to create vim-script-function that call wraped
-        python-function
+        Decorator to create vim-script-function
+        that call wraped python-function.
         Does not allowed **kwargs
         """
 
-        name = '_'.join([self.name.capitalize(), fn.__name__]). \
-            replace('-', '_')
+        try:
+            self.get_or_create_method(fn).make_vim_function()
 
-        self.make_vim_function(fn, name)
+        except Exception:
+            self.log.exception('Decorator vim_func')
 
         return fn
 
-    def make_vim_function(self, fn, name):
-        self.log.debug('Make vim function %s %r', name, fn)
-
-        template = """
-            function! %(vim_function)s(%(argnames)s) %(range)s
-            python << endpython
-            from pythogen import Gin
-            Gin.get('%(plugin_name)s').get_method('%(python_method)s')()
-            endpython
-            endfunction
+    def vim_command(self, command_name):
+        """
+        Decorator to create vim-command
+        that call python-function via vim-function.
         """
 
-        spec = inspect.getargspec(fn)
+        def deco(fn):
+            try:
+                self.get_or_create_method(fn).make_vim_command(command_name)
+
+            except Exception:
+                self.log.exception('Decorator vim_command')
+
+            return fn
+
+        return deco
+
+
+class GinMethod(object):
+    vim_fn_name = None
+
+    def __init__(self, gin, fn):
+        self.gin = gin
+        self.fn = fn
+        self.spec = inspect.getargspec(fn)
+
+    @staticmethod
+    def eval_vim_args_with_python(fn, argnames, varargs, range_argname):
+        def vim_eval_a(name):
+            return vim.eval('a:%s' % name)
+
+        args = [vim_eval_a(name) for name in argnames]
+
+        if varargs:
+            argn = int(vim.eval('a:0'))
+
+            for j in xrange(1, argn + 1):
+                args.append(vim.eval('a:%s' % j))
+
+        kwargs = {}
+
+        if range_argname:
+            kwargs[range_argname] = (
+                vim.eval('a:firstline'),
+                vim.eval('a:lastline')
+            )
+
+        vim.command('return "{}"'.format(fn(*args, **kwargs)))
+
+    def make_vim_command(self, command_name):
+        pass
+
+    def make_vim_function(self):
+        self.vim_fn_name = '_'.join([
+            self.gin.name.capitalize(),
+            self.fn.__name__
+        ]).replace('-', '_')
+
+        spec = self.spec
 
         argnames = [a for a in spec.args if a not in ['vimrange']]
 
@@ -269,25 +308,39 @@ class Gin(object):
         if spec.defaults or spec.varargs:
             argnames.append('...')
 
-        declaration = textwrap.dedent(template) % {
-            'vim_function': name,
-            'argnames': ', '.join(argnames),
-            'range': 'range' if 'vimrange' in spec.args else '',
-            'plugin_name': self.name,
-            'python_method': fn.__name__,
-        }
-
-        self.log.debug('make_vim_function declaration: %s', declaration)
-
-        @functools.wraps(fn)
         def wrapper():
-            eval_vim_args_with_python(
-                fn,
+            return self.eval_vim_args_with_python(
+                self.fn,
                 argnames,
                 varargs=bool(spec.defaults or spec.varargs),
                 range_argname='vimrange' if 'vimrange' in spec.args else None
             )
 
-        self._methods[fn.__name__] = wrapper
+        self.run_from_vim_function = wrapper
+
+        template = """
+            function! %(vim_function)s(%(argnames)s) %(range)s
+            python << endpython
+            from pythogen import Gin
+            plugin = Gin.get('%(plugin_name)s')
+            method = plugin.get_method('%(method_name)s')
+            method.run_from_vim_function()
+            endpython
+            endfunction
+        """
+
+        declaration = textwrap.dedent(template) % {
+            'vim_function': self.vim_fn_name,
+            'argnames': ', '.join(argnames),
+            'range': 'range' if 'vimrange' in spec.args else '',
+            'plugin_name': self.gin.name,
+            'method_name': self.fn.__name__,
+        }
+
+        self.gin.log.debug('Make vim fn: %s',
+                           declaration.strip().splitlines()[0])
 
         vim.command(declaration)
+
+    def __repr__(self):
+        return '<%s %r>' % (self.__class__.__name__, self.fn)

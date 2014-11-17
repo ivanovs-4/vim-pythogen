@@ -1,6 +1,6 @@
 TODO:
 =====
 
-- Implement carbonate as plugin
+- make_vim_command
 - Handle virtualenv
 - Process requirements.txt
