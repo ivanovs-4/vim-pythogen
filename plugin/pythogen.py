@@ -167,16 +167,15 @@ class Plugins(dict):
         self[name] = plugin
 
 
-_plugins = Plugins()
-
-
 class Gin(object):
     """ Main entry-point for individual plugin """
+
+    _plugins = Plugins()
 
     def __init__(self, name):
         self.name = name
 
-        _plugins.register(self.name, self)
+        self._plugins.register(self.name, self)
 
         self._methods = {}
 
@@ -210,16 +209,17 @@ class Gin(object):
 
     @classmethod
     def get(cls, name):
-        return _plugins.get(name)
+        return cls._plugins.get(name)
 
     def get_method(self, fn):
-        return self._methods[GinMethod.fn_method_name(fn)]
+        return self._methods.get(GinMethod.fn_method_name(fn))
 
     def get_or_create_method(self, fn):
         name = GinMethod.fn_method_name(fn)
 
         if name not in self._methods:
             self._methods[name] = GinMethod(self, fn)
+            fn.gin_method = self._methods[name]
 
         return self._methods[name]
 
