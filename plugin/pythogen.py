@@ -167,16 +167,15 @@ class Plugins(dict):
         self[name] = plugin
 
 
-_plugins = Plugins()
-
-
 class Gin(object):
     """ Main entry-point for individual plugin """
+
+    _plugins = Plugins()
 
     def __init__(self, name):
         self.name = name
 
-        _plugins.register(self.name, self)
+        self._plugins.register(self.name, self)
 
         self._methods = {}
 
@@ -210,18 +209,36 @@ class Gin(object):
 
     @classmethod
     def get(cls, name):
-        return _plugins.get(name)
+        return cls._plugins.get(name)
 
     def get_method(self, fn):
-        return self._methods[GinMethod.fn_method_name(fn)]
+        return self._methods.get(GinMethod.fn_method_name(fn))
 
-    def get_or_create_method(self, fn):
+    def method(self, fn):
         name = GinMethod.fn_method_name(fn)
 
         if name not in self._methods:
             self._methods[name] = GinMethod(self, fn)
+            fn.gin_method = self._methods[name]
 
         return self._methods[name]
+
+    def vim_operator(self, fn):
+        """
+        Decorator to create vim-script-opertor
+        that call wraped python-function.
+        Does not allowed **kwargs
+        """
+
+        self.log.debug('Decorator vim_operator')
+
+        try:
+            self.method(fn).make_vim_operator()
+
+        except Exception:
+            self.log.exception('Decorator vim_operator')
+
+        return fn
 
     def vim_func(self, fn):
         """
@@ -231,7 +248,7 @@ class Gin(object):
         """
 
         try:
-            self.get_or_create_method(fn).make_vim_function()
+            self.method(fn).make_vim_function()
 
         except Exception:
             self.log.exception('Decorator vim_func')
@@ -246,8 +263,7 @@ class Gin(object):
 
         def deco(fn):
             try:
-                self.get_or_create_method(fn). \
-                    make_vim_command(command_name, *args, **kwargs)
+                self.method(fn).make_vim_command(command_name, *args, **kwargs)
 
             except Exception:
                 self.log.exception('Decorator vim_command')
@@ -262,6 +278,10 @@ class GinMethod(object):
         self.gin = gin
         self.fn = fn
         self.spec = inspect.getargspec(fn)
+
+    @property
+    def log(self):
+        return self.gin.log
 
     @staticmethod
     def fn_method_name(fn):
@@ -293,6 +313,21 @@ class GinMethod(object):
             )
 
         vim.command('return "{}"'.format(fn(*args, **kwargs)))
+
+    def make_vim_operator(self):
+        if self._vim_operator:
+            return
+
+        self._vim_operator = VimOperator(self)
+
+    _vim_operator = None
+
+    @property
+    def vim_operator(self):
+        if not self._vim_operator:
+            self.make_vim_operator()
+
+        return self._vim_operator
 
     def make_vim_command(self, command_name):
         '''
@@ -402,3 +437,16 @@ class GinMethod(object):
 
     def __repr__(self):
         return '<%s %r>' % (self.__class__.__name__, self.fn)
+
+
+class VimOperator(object):
+    def __init__(self, gin_method):
+        self.gin_method = gin_method
+        self.log.debug('VimOperator.__init__')
+
+    @property
+    def log(self):
+        return self.gin_method.log
+
+    def map(self, keyseq):
+        self.log.debug('map %r', keyseq)
