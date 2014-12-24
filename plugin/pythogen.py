@@ -31,6 +31,7 @@ def carbonate():
     gin = Gin(__name__)
 
     gin.settings.option('enabled', default=True)
+    gin.settings.option('debug', default=False)
 
     if not gin.settings['enabled']:
         return
@@ -63,19 +64,17 @@ def carbonate():
 
         gin.log.info('Loaded: %r', plugin_module)
 
+    if gin.settings['debug']:
+        if 'EXIT' in get_vim_buffers_names():
+            vim.command('qall!')
+
+
+def get_vim_buffers_names():
+    return [(b.name or '').split('/')[-1] for b in vim.buffers]
+
 
 class TextObject(object):
     """ Base class for custom vim textobject """
-    pass
-
-
-class ExCommand(object):
-    """ Base class for custom vim commands """
-    pass
-
-
-class Operator(object):
-    """ Base class for custom vim operator """
     pass
 
 
@@ -86,7 +85,6 @@ class Movement(object):
 
 """
 TODO:
-    декоратор для создания команд над функциями
     декоратор создания фильтра над выделенным фрагментом текста
 """
 
@@ -219,7 +217,6 @@ class Gin(object):
 
         if name not in self._methods:
             self._methods[name] = GinMethod(self, fn)
-            fn.gin_method = self._methods[name]
 
         return self._methods[name]
 
@@ -229,8 +226,6 @@ class Gin(object):
         that call wraped python-function.
         Does not allowed **kwargs
         """
-
-        self.log.debug('Decorator vim_operator')
 
         try:
             self.method(fn).make_vim_operator()
@@ -315,19 +310,12 @@ class GinMethod(object):
         vim.command('return "{}"'.format(fn(*args, **kwargs)))
 
     def make_vim_operator(self):
-        if self._vim_operator:
+        self.log.debug('vim_fn_name: %s', self.vim_fn_name)
+
+        if getattr(self, '_vim_operator', False):
             return
 
-        self._vim_operator = VimOperator(self)
-
-    _vim_operator = None
-
-    @property
-    def vim_operator(self):
-        if not self._vim_operator:
-            self.make_vim_operator()
-
-        return self._vim_operator
+        # self._vim_operator = VimOperator(self)
 
     def make_vim_command(self, command_name):
         '''
@@ -437,16 +425,3 @@ class GinMethod(object):
 
     def __repr__(self):
         return '<%s %r>' % (self.__class__.__name__, self.fn)
-
-
-class VimOperator(object):
-    def __init__(self, gin_method):
-        self.gin_method = gin_method
-        self.log.debug('VimOperator.__init__')
-
-    @property
-    def log(self):
-        return self.gin_method.log
-
-    def map(self, keyseq):
-        self.log.debug('map %r', keyseq)
