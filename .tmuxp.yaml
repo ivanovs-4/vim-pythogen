@@ -1,0 +1,14 @@
+session_name: vim_py
+windows:
+- focus: 'true'
+  layout: main-vertical
+  options:
+    main-pane-width: 93
+  panes:
+  - shell_command: vim -p plugin/pythogen.py ~/.vimrcpy/pythogen.json
+    focus: true
+  - vim EXIT
+  - tail -f /tmp/cc/*.log
+  - tail -f /tmp/cc/pythogen/pythogen.log
+  start_directory: /home/seiv/dot/vim/bundle/vim-pythogen
+  window_name: pythogen
