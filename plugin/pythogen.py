@@ -177,8 +177,10 @@ class Gin(object):
 
         self._methods = {}
 
+        self.debug = bool('DEBUG-%s' % self.name in get_vim_buffers_names())
+
         self.log = logging.getLogger(self.name)
-        self.log.setLevel(logging.INFO)
+        self.log.setLevel(logging.DEBUG if self.debug else logging.INFO)
 
         self.settings.option('LOG_PATH', default=None)
 
@@ -194,9 +196,14 @@ class Gin(object):
         else:
             handler = logging.FileHandler('/dev/null')
 
-        fm = logging.Formatter('%(levelname)s: %(message)s')
+        fm = logging.Formatter(
+            '%(asctime)s %(levelname)s: %(message)s',
+            '%H:%M:%S'
+        )
         handler.setFormatter(fm)
         self.log.addHandler(handler)
+
+        self.log.debug('Plugin name: %r', self.name)
 
     @property
     def settings(self):
