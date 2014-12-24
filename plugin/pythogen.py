@@ -22,7 +22,7 @@ _storage = {}
 
 RUNTIME_PATH = vim.eval("&runtimepath").split(',')
 
-SETTINGS_PLACE = '.vimrcpy'
+SETTINGS_PLACE = '.vim/py_plugins_configs'
 
 
 def carbonate():
@@ -51,8 +51,9 @@ def carbonate():
         try:
             plugin_module = import_module(plugin_name)
 
-        except Exception as e:
-            gin.log.info('Import module error: %r %r', plugin_name, e)
+        except Exception:
+            gin.log.debug('Import module error: %r', plugin_name,
+                          exc_info=True)
 
             if path_was_appended:
                 sys.path.remove(plugin_path)
@@ -64,7 +65,9 @@ def carbonate():
 
         gin.log.info('Loaded: %r', plugin_module)
 
-    if gin.settings['debug']:
+    gin.log.info('Plugins: %r', Gin.plugins.keys())
+
+    if any([plugin.debug for plugin in Gin.plugins.values()]):
         if 'EXIT' in get_vim_buffers_names():
             vim.command('qall!')
 
@@ -140,12 +143,6 @@ class Settings(object):
     def items(self):
         return {k: self[k] for k in self._options.keys()}
 
-    def __getattr__(self, name):
-        try:
-            return self[name]
-        except Exception:
-            return super(Settings, self).__getattr__(name)
-
     def __getitem__(self, name):
         # Return stored value or default value for this option
         return self._storage[name] if name in self._storage else \
@@ -168,12 +165,12 @@ class Plugins(dict):
 class Gin(object):
     """ Main entry-point for individual plugin """
 
-    _plugins = Plugins()
+    plugins = Plugins()
 
     def __init__(self, name):
         self.name = name
 
-        self._plugins.register(self.name, self)
+        self.plugins.register(self.name, self)
 
         self._methods = {}
 
@@ -184,11 +181,11 @@ class Gin(object):
 
         self.settings.option('LOG_PATH', default=None)
 
-        if self.settings.LOG_PATH:
-            if not os.path.exists(self.settings.LOG_PATH):
-                os.makedirs(self.settings.LOG_PATH)
+        if self.settings['LOG_PATH']:
+            if not os.path.exists(self.settings['LOG_PATH']):
+                os.makedirs(self.settings['LOG_PATH'])
 
-            log_file_name = '%s.log' % os.path.join(self.settings.LOG_PATH,
+            log_file_name = '%s.log' % os.path.join(self.settings['LOG_PATH'],
                                                     self.name)
 
             handler = WatchedFileHandler(log_file_name, 'w')
@@ -204,6 +201,7 @@ class Gin(object):
         self.log.addHandler(handler)
 
         self.log.debug('Plugin name: %r', self.name)
+        self.log.info('Plugin NAME: %r', self.name)
 
     @property
     def settings(self):
@@ -214,7 +212,7 @@ class Gin(object):
 
     @classmethod
     def get(cls, name):
-        return cls._plugins.get(name)
+        return cls.plugins.get(name)
 
     def get_method(self, fn):
         return self._methods.get(GinMethod.fn_method_name(fn))
