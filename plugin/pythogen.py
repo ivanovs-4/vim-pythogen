@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-#!/usr/bin/env python
 from __future__ import absolute_import, unicode_literals
 
 import functools
@@ -23,6 +22,19 @@ _storage = {}
 RUNTIME_PATH = vim.eval("&runtimepath").split(',')
 
 SETTINGS_PLACE = '.vim/py_plugins_configs'
+
+
+class cached_property(object):
+    """
+    Decorator that creates converts a method with a single
+    self argument into a property cached on the instance.
+    """
+    def __init__(self, func):
+        self.func = func
+
+    def __get__(self, instance, type):
+        res = instance.__dict__[self.func.__name__] = self.func(instance)
+        return res
 
 
 def carbonate():
@@ -201,7 +213,6 @@ class Gin(object):
         self.log.addHandler(handler)
 
         self.log.debug('Plugin name: %r', self.name)
-        self.log.info('Plugin NAME: %r', self.name)
 
     @property
     def settings(self):
@@ -233,12 +244,13 @@ class Gin(object):
         """
 
         try:
-            self.method(fn).make_vim_operator()
+            self.get_vim_operator(fn)
 
         except Exception:
             self.log.exception('Decorator vim_operator')
 
-        return fn
+    def get_vim_operator(self, fn):
+        return self.method(fn).vim_operator
 
     def vim_func(self, fn):
         """
@@ -313,14 +325,6 @@ class GinMethod(object):
             )
 
         vim.command('return "{}"'.format(fn(*args, **kwargs)))
-
-    def make_vim_operator(self):
-        self.log.debug('vim_fn_name: %s', self.vim_fn_name)
-
-        if getattr(self, '_vim_operator', False):
-            return
-
-        # self._vim_operator = VimOperator(self)
 
     def make_vim_command(self, command_name):
         '''
@@ -428,5 +432,21 @@ class GinMethod(object):
 
         vim.command(declaration)
 
+    @cached_property
+    def vim_operator(self):
+        return VimOperator(self)
+
     def __repr__(self):
         return '<%s %r>' % (self.__class__.__name__, self.fn)
+
+
+class VimOperator(object):
+    def __init__(self, gin_method):
+        self.gin_method = gin_method
+
+        self.log.debug('vim_fn_name: %s', self.gin_method.vim_fn_name)
+
+    @property
+    def log(self):
+        return self.gin_method.log
+

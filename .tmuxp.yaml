@@ -6,9 +6,9 @@ windows:
     main-pane-width: 93
   start_directory: /home/seiv/dot/vim/bundle/vim-pythogen
   panes:
-  - shell_command: vim -p plugin/pythogen.py ~/.vim/py_plugins_configs/pythogen.json .tmuxp.yaml
+  - shell_command: vim -p plugin/pythogen.py ~/.vim/py_plugins_configs/pythogen.json .tmuxp.yaml ~/dot/vim/bundle/iv-commands/plugin/iv-commands.py
     focus: true
-  - vim EXIT
+  - pane
   - tail -f /tmp/cc/*.log
   - tail -f /tmp/cc/pythogen/pythogen.log
   window_name: pythogen
