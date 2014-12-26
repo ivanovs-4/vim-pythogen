@@ -40,7 +40,7 @@ class cached_property(object):
 def carbonate():
     """ Load all python modules from bundle directory """
 
-    gin = Gin(__name__)
+    gin = pythogen_gin
 
     gin.settings.option('enabled', default=True)
     gin.settings.option('debug', default=False)
@@ -61,12 +61,18 @@ def carbonate():
             path_was_appended = False
 
         try:
-            plugin_module = import_module(plugin_name)
+            try:
+                plugin_module = import_module(plugin_name)
 
-        except Exception:
-            gin.log.debug('Import module error: %r', plugin_name,
-                          exc_info=True)
+            except vim.error:
+                gin.log.exception('Plugin %r', plugin_name)
+                raise
 
+            except Exception:
+                gin.log.debug('Import module: %r', plugin_name, exc_info=True)
+                raise
+
+        except (vim.error, Exception):
             if path_was_appended:
                 sys.path.remove(plugin_path)
 
@@ -79,9 +85,12 @@ def carbonate():
 
     gin.log.info('Plugins: %r', Gin.plugins.keys())
 
-    if any([plugin.debug for plugin in Gin.plugins.values()]):
-        if 'EXIT' in get_vim_buffers_names():
-            vim.command('qall!')
+    # if any([plugin.debug for plugin in Gin.plugins.values()]):
+    #     if 'EXIT' in get_vim_buffers_names():
+    #         vim.command('qall!')
+
+    if 'PYTHOGEN-FORCE-EXIT' in get_vim_buffers_names():
+        sys.exit()
 
 
 def get_vim_buffers_names():
@@ -249,6 +258,8 @@ class Gin(object):
         except Exception:
             self.log.exception('Decorator vim_operator')
 
+        return fn
+
     def get_vim_operator(self, fn):
         return self.method(fn).vim_operator
 
@@ -267,7 +278,7 @@ class Gin(object):
 
         return fn
 
-    def vim_command(self, command_name, *args, **kwargs):
+    def vim_command(self, command_name):
         """
         Decorator to create vim-command
         that call python-function via vim-function.
@@ -275,7 +286,7 @@ class Gin(object):
 
         def deco(fn):
             try:
-                self.method(fn).make_vim_command(command_name, *args, **kwargs)
+                self.method(fn).make_vim_command(command_name)
 
             except Exception:
                 self.log.exception('Decorator vim_command')
@@ -296,10 +307,11 @@ class GinMethod(object):
 
     @staticmethod
     def fn_method_name(fn):
-        return fn if isinstance(fn, basestring) else repr(fn)
+        return fn if isinstance(fn, basestring) else \
+            '%s_%s' % (fn.__name__, id(fn))
 
-    @property
-    def method_name(self):
+    @cached_property
+    def name(self):
         return self.fn_method_name(self.fn)
 
     @staticmethod
@@ -339,8 +351,13 @@ class GinMethod(object):
         '''
 
         spec = inspect.getargspec(self.fn)
+
         len_defaults = len(spec.defaults or [])
+        self.log.debug('len_defaults: %s' % len_defaults)
+
         len_args = len(spec.args) - len_defaults
+
+        self.log.debug('len_args: %s' % len_args)
 
         if not len_args and not len_defaults and not spec.varargs:
             nargs = '0'
@@ -378,7 +395,8 @@ class GinMethod(object):
 
         self._vim_fn_name = '_'.join([
             self.gin.name.capitalize(),
-            self.fn.__name__
+            self.fn.__name__,
+            str(id(self.fn)),
         ]).replace('-', '_')
 
         spec = inspect.getargspec(self.fn)
@@ -420,7 +438,7 @@ class GinMethod(object):
             'argnames': ', '.join(argnames),
             'range': 'range' if 'vimrange' in spec.args else '',
             'plugin_name': self.gin.name,
-            'method_name': self.method_name,
+            'method_name': self.name,
         }
 
         self.gin.log.debug('Make vim fn: %s',
@@ -443,7 +461,27 @@ class VimOperator(object):
         self.log.debug('vim_function_name: %s',
                        self.gin_method.vim_function_name)
 
+        name = self.gin_method.vim_function_name.lower()
+
+        self.plug = '<Plug>(operator-%s)' % name
+
+        # Use operator-user vim plugin from Kana Natsuno
+        cmd = "call operator#user#define('%s', '%s')" % (
+            name, self.gin_method.vim_function_name
+        )
+
+        self.log.debug('VimOperator: %r %r', self.plug, cmd)
+
+        vim.command(cmd)
+
+    def map(self, seq):
+        cmd = 'map %s %s' % (seq, self.plug)
+        self.log.debug('Map operator: %r', cmd)
+        vim.command(cmd)
+
     @property
     def log(self):
         return self.gin_method.log
 
+
+pythogen_gin = Gin(__name__)
