@@ -289,7 +289,6 @@ class GinMethod(object):
     def __init__(self, gin, fn):
         self.gin = gin
         self.fn = fn
-        self.spec = inspect.getargspec(fn)
 
     @property
     def log(self):
@@ -339,7 +338,7 @@ class GinMethod(object):
         -nargs=+    Arguments must be supplied, but any number are allowed
         '''
 
-        spec = self.spec
+        spec = inspect.getargspec(self.fn)
         len_defaults = len(spec.defaults or [])
         len_args = len(spec.args) - len_defaults
 
@@ -362,22 +361,19 @@ class GinMethod(object):
         fargs = '<f-args>'
 
         declaration = 'command! %s %s call %s(%s)' % (
-            attrs, command_name, self.vim_fn_name, fargs)
+            attrs, command_name, self.vim_function_name, fargs)
 
         self.gin.log.debug('Make vim command: %s', declaration)
 
         vim.command(declaration)
 
-    @property
-    def vim_fn_name(self):
+    @cached_property
+    def vim_function_name(self):
         self.make_vim_function()
-
         return self._vim_fn_name
 
-    _vim_fn_name = None
-
     def make_vim_function(self):
-        if self._vim_fn_name:
+        if getattr(self, '_vim_fn_name', False):
             return
 
         self._vim_fn_name = '_'.join([
@@ -385,7 +381,7 @@ class GinMethod(object):
             self.fn.__name__
         ]).replace('-', '_')
 
-        spec = self.spec
+        spec = inspect.getargspec(self.fn)
 
         argnames = [a for a in spec.args if a not in ['vimrange']]
 
@@ -444,7 +440,8 @@ class VimOperator(object):
     def __init__(self, gin_method):
         self.gin_method = gin_method
 
-        self.log.debug('vim_fn_name: %s', self.gin_method.vim_fn_name)
+        self.log.debug('vim_function_name: %s',
+                       self.gin_method.vim_function_name)
 
     @property
     def log(self):
