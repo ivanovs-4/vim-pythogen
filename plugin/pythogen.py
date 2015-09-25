@@ -94,7 +94,10 @@ def carbonate():
 
 
 def get_vim_buffers_names():
-    return [(b.name.decode('utf-8') or '').split('/')[-1] for b in vim.buffers]
+    return [
+        (b.name and b.name.decode('utf-8') or '').split('/')[-1]
+        for b in vim.buffers
+    ]
 
 
 class TextObject(object):
