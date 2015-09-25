@@ -85,9 +85,9 @@ def carbonate():
 
     gin.log.info('Plugins: %r', Gin.plugins.keys())
 
-    # if any([plugin.debug for plugin in Gin.plugins.values()]):
-    #     if 'EXIT' in get_vim_buffers_names():
-    #         vim.command('qall!')
+    if any([plugin.debug for plugin in Gin.plugins.values()]):
+        if 'EXIT' in get_vim_buffers_names():
+            vim.command('qall!')
 
     if 'PYTHOGEN-FORCE-EXIT' in get_vim_buffers_names():
         sys.exit()
